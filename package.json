@@ -2,9 +2,12 @@
   "name": "atari-joystick",
   "version": "0.1.0",
   "description": "simple joystick for simple direction control on touch screens like as with arrow keys",
-  "main": "index.js",
+  "main": "./dist/index.js",
+  "typings": "./dist/index.d.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "format": "prettier --write ./src",
+    "build": "babel src --extensions .ts --out-dir dist"
   },
   "repository": {
     "type": "git",
@@ -22,5 +25,13 @@
   "bugs": {
     "url": "https://github.com/ruansenadev/atari-joystick/issues"
   },
-  "homepage": "https://github.com/ruansenadev/atari-joystick#readme"
+  "homepage": "https://github.com/ruansenadev/atari-joystick#readme",
+  "devDependencies": {
+    "@babel/cli": "^7.18.10",
+    "@babel/core": "^7.18.10",
+    "@babel/preset-env": "^7.18.10",
+    "@babel/preset-typescript": "^7.18.6",
+    "prettier": "2.7.1",
+    "typescript": "^4.7.4"
+  }
 }
