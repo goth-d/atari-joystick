@@ -17,6 +17,8 @@ type JoystickOptions = {
   margin: number;
   /** A boolean for drawing an assistive sticker, drawn in the margin */
   ghostSticker: boolean;
+  /** A boolean for starting disabled */
+  startDisabled: boolean;
 };
 
 type StateObject = {
@@ -34,11 +36,11 @@ type StateObject = {
   sin?: number;
 };
 
-type StateChangeCallback = 
-/** @param state - The current state object output */
-(state: StateObject) => void;
+type StateChangeCallback =
+  /** @param state - The current state object output */
+  (state: StateObject) => void;
 
-const defaultOptions: JoystickOptions = {
+const defaultOptions: JoystickOptions = Object.create({
   directions: 8,
   throttling: 150,
   flares: true,
@@ -47,30 +49,75 @@ const defaultOptions: JoystickOptions = {
   bleeding: 8,
   margin: 32,
   ghostSticker: true,
-};
+  startDisabled: false,
+});
 
 class Joystick {
+  public parent: HTMLElement;
   public directions: CongruentDirection[];
+  private shouldMove = true;
+  public isEnabled = true;
+  private touchMoveHandler: (event: TouchEvent) => void;
 
   /**
-   * @param selector - A query string or the element itself
+   * @param element - A query string or the element itself
    * @param handler - A callback function called on state change
    * @param options - An object of joystick options
    */
-  constructor(selector: string | Element, handler: StateChangeCallback, options: Partial<JoystickOptions> = {}) {
-    let parent = typeof selector == "string" ? document.querySelector(selector) : selector;
-    this.directions = mapCongruentAngles(options.directions ?? defaultOptions.directions);
+  constructor(element: string | HTMLElement, handler: StateChangeCallback, options: Partial<JoystickOptions> = {}) {
+    let parent = typeof element == "string" ? document.querySelector(element) : element;
+    if (!parent || !(parent instanceof HTMLElement)) {
+      throw new ReferenceError(
+        `No matches for: ${element},\n Make sure the query is correct and the DOM content has been loaded`
+      );
+    }
+    this.parent = parent;
+
+    let optionsObj: Partial<JoystickOptions> & { [k: string]: any } & Object = new Object(options);
+    let parsedOptions: { [k: string]: any } & JoystickOptions = Object.create(defaultOptions);
+    Object.keys(parsedOptions).forEach((k) => {
+      if (optionsObj.hasOwnProperty(k)) parsedOptions[k] = optionsObj[k];
+    });
+
+    this.directions = mapCongruentAngles(parsedOptions.directions ?? 1);
+
+    this.touchMoveHandler =
+      typeof options.throttling == "number"
+        ? (event) => {
+            if (this.shouldMove) {
+              this.shouldMove = false;
+              handler(this.sync(event));
+              setTimeout(() => (this.shouldMove = true), options.throttling);
+            }
+          }
+        : (event) => handler(this.sync(event));
+
+    if (!parsedOptions.startDisabled) {
+      this.enable();
+    } else {
+      this.isEnabled = false;
+    }
   }
 
-  /* private enable() {
-    // set directions angles
+  private enable() {
+    this.parent.addEventListener("touchstart", this.sync);
+    this.parent.addEventListener("touchmove", this.touchMoveHandler);
+    this.parent.addEventListener("touchend", this.sync);
+    this.isEnabled = true;
   }
-  private sync() {
+  public sync(event: TouchEvent): StateObject {
+    return {} as StateObject;
     // handle events and sync state
   }
   private animate() {
     // request animations with cur state
-  } */
+  }
+  private disable() {
+    this.parent.removeEventListener("touchstart", this.sync);
+    this.parent.removeEventListener("touchmove", this.touchMoveHandler);
+    this.parent.removeEventListener("touchend", this.sync);
+    this.isEnabled = false;
+  }
 }
 
 class State {
