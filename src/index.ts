@@ -5,6 +5,10 @@ type JoystickOptions = {
   directions: number;
   /** A number of miliseconds, throttling delay */
   throttling: number;
+  /** A string for the position on the horizontal axis */
+  xPosition: "left" | "right";
+  /** A string for the position on the vertical axis */
+  yPosition: "top" | "bottom";
   /** A number of pixels, square width of joystick */
   size: number;
   /** A boolean for drawing flares indicating current direction */
@@ -43,6 +47,8 @@ type StateChangeCallback =
 const defaultOptions: JoystickOptions = Object.create({
   directions: 8,
   throttling: 150,
+  xPosition: "left",
+  yPosition: "top",
   flares: true,
   size: 42,
   padding: 8,
@@ -120,20 +126,64 @@ class Joystick {
   }
 }
 
-class State {
+export class State {
   constructor() {}
-  /* track() {
-    // init tracking on touchstart and removes listener
-  }
-  update() {
-    // keeps checking changedTouches of touchmove ev
-  }
-  clear() {
-    // finish tracking when touch list is 1 length on touchend and adds start listener
-  } */
+  update() {}
 }
 
-class Renderer {
+export class Renderer {
+  constructor() {}
+}
+
+class PointPosition {
+  private x: number;
+  private y: number;
+  private parentX: number;
+  private parentY: number;
+  public pageX: number;
+  public pageY: number;
+
+  /**
+   * @param x A number of left position relative to its parent
+   * @param y A number of top position relative to its parent
+   * @param parentX A number of its parent left position relative to page
+   * @param parentY A number of its parent top position relative to page
+   */
+  constructor(x: number, y: number, parentX = 0, parentY = 0) {
+    this.x = x;
+    this.y = y;
+    this.parentX = parentX;
+    this.parentY = parentY;
+    this.pageX = this.parentX + this.x;
+    this.pageY = this.parentY + this.y;
+  }
+  /**
+   * Calcs a point in the cartesian plane
+   * @param origin A {@link PointPosition} representing 0, 0
+   * @returns An object with x and y coord numbers
+   */
+  public getRelativeCoords(origin: PointPosition): { x: number; y: number } {
+    // Y axis is inverted in page coord
+    return Object.create({
+      x: this.pageX - origin.pageX,
+      y: origin.pageY - this.pageY,
+    });
+  }
+
+  /**
+   * Calcs an angle of two points, in the cartesian plane, clockwise from right
+   * @param origin A {@link PointPosition} representing 0, 0
+   * @returns A number of the angle
+   */
+  public getPointAngle(origin: PointPosition) {
+    let { x: deltaX, y: deltaY } = this.getRelativeCoords(origin);
+    let thetaAngle = Math.atan2(deltaY, deltaX);
+
+    return thetaAngle;
+  }
+}
+
+class JoystickTouchHandler {
   constructor() {}
 }
 
