@@ -1,3 +1,10 @@
+export type DebouncingHandlerTuple<Ev = Event> = {
+  /** The event handler function */
+  0: (event: Ev) => void;
+  /** The current pause timeout ref */
+  1?: number;
+};
+
 export type CongruentDirection = {
   /** A number of direction slice start position */
   startAngle: number;

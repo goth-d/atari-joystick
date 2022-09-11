@@ -1,15 +1,15 @@
-import { absoluteAngle, CongruentDirection, mapCongruentAngles } from "./util";
+import { absoluteAngle, CongruentDirection, DebouncingHandlerTuple, mapCongruentAngles } from "./util";
 
 type JoystickOptions = {
   /** A number of directions, congruents */
   directions: number;
   /** A number of milliseconds, of delay, for computing moves */
   throttling: number;
-  /** A string for the position on the horizontal axis */
-  xPosition: "left" | "right";
-  /** A string for the position on the vertical axis */
-  yPosition: "top" | "bottom";
-  /** A number of pixels, square width of joystick */
+  /** A string for the position alignment on the horizontal axis */
+  xAlign: "left" | "right" | "center";
+  /** A string for the position alignment on the vertical axis */
+  yAlign: "top" | "bottom" | "center";
+  /** A number of pixels (32 - 64), square width of joystick */
   size: number;
   /** A boolean for drawing flares indicating current direction */
   flares: boolean;
@@ -24,6 +24,11 @@ type JoystickOptions = {
   /** A boolean for starting disabled */
   startDisabled: boolean;
 };
+
+type RendererOptions = Pick<
+  JoystickOptions,
+  "xAlign" | "yAlign" | "size" | "padding" | "bleeding" | "margin" | "ghostSticker" | "flares" | "startDisabled"
+>;
 
 type StateObject = {
   /** A boolean if joystick is being hold */
@@ -60,16 +65,17 @@ class Joystick {
   public parent: HTMLElement;
   private stateCb: StateChangeCallback;
   public directions: CongruentDirection[];
-  public isEnabled = true;
-  private touchHandler: JoystickTouchHandler;
-  private _throttling?: number;
+  public isEnabled = !defaultOptions.startDisabled;
+  private _throttling: number | undefined = defaultOptions.throttling;
+  public touchHandler: TouchHandler;
+  public renderer: Renderer;
 
   /**
    * @param element - A query string or the element itself
-   * @param handler - A callback function called on state change
+   * @param stateCallback - A callback function called on state change
    * @param options - An object of joystick options
    */
-  constructor(element: string | HTMLElement, handler: StateChangeCallback, options: Partial<JoystickOptions> = {}) {
+  constructor(element: string | HTMLElement, stateCallback: StateChangeCallback, options: Partial<JoystickOptions> = {}) {
     let parent = typeof element == "string" ? document.querySelector(element) : element;
     if (!(parent instanceof HTMLElement)) {
       throw new ReferenceError(
@@ -78,20 +84,19 @@ class Joystick {
     }
     this.parent = parent;
 
-    this.stateCb = handler;
+    this.stateCb = stateCallback;
 
-    let optionsObj: Partial<JoystickOptions> & { [k: string]: any } & Object = new Object(options);
-    let parsedOptions: { [k: string]: any } & JoystickOptions = Object.create(defaultOptions);
-    Object.keys(parsedOptions).forEach((k) => {
-      if (optionsObj.hasOwnProperty(k)) parsedOptions[k] = optionsObj[k];
-    });
+    options = { ...defaultOptions, ...options };
 
-    this.directions = mapCongruentAngles(parsedOptions.directions ?? 1);
+    this.directions = mapCongruentAngles(options.directions ?? 1);
 
     this._throttling = options.throttling;
-    this.touchHandler = new JoystickTouchHandler(this);
 
-    if (!parsedOptions.startDisabled) {
+    this.touchHandler = new TouchHandler(this);
+
+    this.renderer = new Renderer(this, options);
+
+    if (!options.startDisabled) {
       this.enable();
     } else {
       this.isEnabled = false;
@@ -127,63 +132,178 @@ class Joystick {
 }
 
 export class State {
-  constructor() {}
-  update() {}
+  public state: StateObject;
+  public joystick: Joystick;
+  constructor(joystick: Joystick) {
+    this.joystick = joystick;
+    this.state = { isActive: false };
+  }
+  update(eventType: TouchEvent["type"], touch: Touch) {
+    let output: StateObject;
+    if (eventType == "touchstart") {
+    }
+  }
 }
 
 export class Renderer {
-  constructor() {}
+  public joystick: Joystick;
+  public origin: PointPosition;
+  private size: number;
+  private padding: number;
+  private margin: number;
+  private bleeding: number;
+  private flares = defaultOptions.flares;
+  private startDisabled = defaultOptions.startDisabled;
+  private xAlign = defaultOptions.xAlign;
+  private yAlign = defaultOptions.yAlign;
+  public contentSize: number;
+  constructor(joystick: Joystick, options: Partial<RendererOptions>) {
+    this.joystick = joystick;
+    // 32 - 64
+    this.size = Math.max(32, Math.min(options.size ?? defaultOptions.size, 64));
+    // 0 - 16
+    this.padding = Math.max(0, Math.min(options.padding ?? defaultOptions.padding, 16));
+    // 0 - padding
+    this.bleeding = Math.max(0, Math.min(options.bleeding ?? defaultOptions.bleeding, this.padding));
+    // 0 - 48
+    this.margin = Math.max(0, Math.min(options.margin ?? defaultOptions.margin, 48));
+    if (typeof options.flares == "boolean") this.flares = options.flares;
+    if (typeof options.startDisabled == "boolean") this.startDisabled = options.startDisabled;
+    if (options.xAlign) this.xAlign = options.xAlign;
+    if (options.yAlign) this.yAlign = options.yAlign;
+
+    this.contentSize = this.calcContentSize();
+
+    this.origin = new PointPosition(...this.getStaticJoystickCoords(), this.joystick.parent);
+  }
+  private calcContentSize() {
+    let contentSize = this.size;
+    contentSize += this.padding * 2;
+    contentSize += this.margin * 2;
+    return contentSize;
+  }
+  private getStaticJoystickCoords(): [number, number] {
+    let joystickCenter = this.contentSize / 2;
+    let parentRect = this.joystick.parent.getBoundingClientRect();
+    let x, y;
+    if (this.xAlign == "left") {
+      x = 0 + joystickCenter;
+    } else if (this.xAlign == "right") {
+      x = parentRect.width - joystickCenter;
+    } else {
+      x = parentRect.width / 2;
+    }
+    if (this.yAlign == "top") {
+      y = 0 + joystickCenter;
+    } else if (this.yAlign == "bottom") {
+      y = parentRect.height - joystickCenter;
+    } else {
+      y = parentRect.height / 2;
+    }
+    return [x, y];
+  }
 }
 
-class PointPosition {
+export class PointPosition {
   private x: number;
   private y: number;
-  private parentX: number;
-  private parentY: number;
-  public pageX: number;
-  public pageY: number;
+  private parent: HTMLElement;
+  private _pageX?: number;
+  private _pageY?: number;
+  public resizeDbc?: DebouncingHandlerTuple;
 
   /**
-   * @param x - A number of left position relative to its parent
-   * @param y - A number of top position relative to its parent
-   * @param parentX - A number of its parent left position relative to page
-   * @param parentY - A number of its parent top position relative to page
+   * Computes a position relative to an element edge
+   * @param x - A number of left position relative to its parent, or page if parent omitted
+   * @param y - A number of top position relative to its parent, or page if parent omitted
+   * @param parent - A {@link HTMLElement} of its parent
    */
-  constructor(x: number, y: number, parentX = 0, parentY = 0) {
+  constructor(x: number, y: number, parent: HTMLElement) {
     this.x = x;
     this.y = y;
-    this.parentX = parentX;
-    this.parentY = parentY;
-    this.pageX = this.parentX + this.x;
-    this.pageY = this.parentY + this.y;
+    this.parent = parent;
+    this.watchLayoutShifting();
+  }
+  private calcParentTop() {
+    let rect = this.parent.getBoundingClientRect();
+    return rect.top + window.scrollY;
+  }
+  private calcParentLeft() {
+    let rect = this.parent.getBoundingClientRect();
+    return rect.left + window.scrollX;
+  }
+  public set pageX(x: number) {
+    this._pageX = x + this.calcParentLeft();
+  }
+  public set pageY(y: number) {
+    this._pageY = y + this.calcParentTop();
+  }
+  public get pageX() {
+    // call setter
+    if (typeof this._pageX == "number") this.pageX = this.x;
+    // ts type-safe
+    return typeof this._pageX == "number" ? this._pageX : NaN;
+  }
+  public get pageY() {
+    // call setter
+    if (typeof this._pageY != "number") this.pageY = this.y;
+    // ts type-safe
+    return typeof this._pageY == "number" ? this._pageY : NaN;
   }
   /**
    * Calcs the axes deltas of two points on the cartesian plane
-   * @param pointB - A {@link PointPosition}
+   * @param pointB - A {@link PointPosition} or an object with page coord numbers
    * @returns An object with x and y, delta, numbers
    */
-  public getAxesDeltas(pointB: PointPosition): { x: number; y: number } {
+  public getAxesDeltas(pointB: PointPosition | { pageX: number; pageY: number }): { x: number; y: number } {
     // Y axis is inverted in page coord
     return Object.create({
       x: this.pageX - pointB.pageX,
       y: pointB.pageY - this.pageY,
     });
   }
-
   /**
    * Calcs an angle relative to this, in the cartesian plane, clockwise from right
-   * @param point - A {@link PointPosition}
+   * @param point - A {@link PointPosition} or an object with page coord numbers
    * @returns A number of the angle
    */
-  public getPointAngle(point: PointPosition) {
-    let { x: deltaX, y: deltaY } = point.getAxesDeltas(this);
+  public getPointAngle(point: PointPosition | { pageX: number; pageY: number }) {
+    let { x: deltaX, y: deltaY } = this.getAxesDeltas(point);
     let thetaAngle = Math.atan2(deltaY, deltaX);
 
     return absoluteAngle(thetaAngle);
   }
+  /**
+   * This attempts to maintain the correct {@link PointPosition.parent} coords amid layout shifting
+   * @param debouncing A number of delay in ms to listen for resizing events
+   */
+  public watchLayoutShifting(debouncing = 200) {
+    let resizeTimeout: number | undefined;
+    this.resizeDbc = [
+      () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+          // call setters
+          this.pageX = this.x;
+          this.pageY = this.y;
+        }, debouncing);
+      },
+      resizeTimeout,
+    ];
+    
+    window.addEventListener("resize", this.resizeDbc["0"]);
+  }
+  /** Removes layout listeners and dettaches them */
+  public ignoreLayoutShifting() {
+    if (this.resizeDbc) {
+      window.removeEventListener("resize", this.resizeDbc[0]);
+      clearTimeout(this.resizeDbc[1]);
+      this.resizeDbc = undefined;
+    }
+  }
 }
 
-class JoystickTouchHandler {
+export class TouchHandler {
   public joystick: Joystick;
   private trackingTouch?: Touch["identifier"];
   private shouldComputeMove = true;
@@ -207,9 +327,9 @@ class JoystickTouchHandler {
         : (event: TouchEvent) => this.handleEventsAndSync(event);
   }
 
-  /** This method should'nt be called directly, instead use {@link Joystick.throttling} */
+  /** This setter should'nt be called directly, instead use {@link Joystick.throttling} */
   public set move(throttling: number | undefined) {
-    this.dettachListeners();
+    if (this.joystick.isEnabled) this.dettachListeners();
 
     this.moveHandler =
       typeof throttling == "number"
@@ -222,7 +342,7 @@ class JoystickTouchHandler {
           }
         : (event: TouchEvent) => this.handleEventsAndSync(event);
 
-    this.attachListeners();
+    if (this.joystick.isEnabled) this.attachListeners();
   }
 
   private handleEventsAndSync(event: TouchEvent) {
@@ -255,7 +375,7 @@ class JoystickTouchHandler {
             // changes to another current touch that was initiated on the parent el
             for (i = 0; i < event.targetTouches.length; i++) {
               touch = event.targetTouches.item(i);
-              if (touch && touch.identifier !== this.trackingTouch) {
+              if (touch) {
                 this.trackingTouch = touch.identifier;
                 this.joystick.sync("touchmove", touch);
               }
