@@ -1,4 +1,11 @@
-import { absoluteAngle, CongruentDirection, DebouncingHandlerTuple, mapCongruentAngles } from "./util";
+import {
+  absoluteAngle,
+  CongruentDirection,
+  CoordsTuple,
+  DebouncingHandlerTuple,
+  isAngleInSlice,
+  mapCongruentAngles,
+} from "./util";
 
 type JoystickOptions = {
   /** A number of directions, congruents */
@@ -33,14 +40,16 @@ type RendererOptions = Pick<
 type StateObject = {
   /** A boolean if joystick is being hold */
   isActive: boolean;
-  /** The current direction index, or null */
-  direction?: string | number;
+  /** The current direction */
+  direction?: CongruentDirection;
   /** A number of current computed touch angle */
   angle?: number;
   /** A number of angle cosine */
   cos?: number;
   /** A number of angle sine */
   sin?: number;
+  /** A list with X, Y numbers */
+  coords?: CoordsTuple;
 };
 
 type StateChangeCallback =
@@ -69,6 +78,7 @@ class Joystick {
   private _throttling: number | undefined = defaultOptions.throttling;
   public touchHandler: TouchHandler;
   public renderer: Renderer;
+  public state: State;
 
   /**
    * @param element - A query string or the element itself
@@ -96,6 +106,8 @@ class Joystick {
 
     this.renderer = new Renderer(this, options);
 
+    this.state = new State(this);
+
     if (!options.startDisabled) {
       this.enable();
     } else {
@@ -120,7 +132,8 @@ class Joystick {
     this.isEnabled = true;
   }
   public sync(eventType: TouchEvent["type"], touch: Touch) {
-    this.stateCb({} as StateObject);
+    this.state.update(eventType, touch.pageX, touch.pageY);
+    this.stateCb(this.state.state);
   }
   private animate() {
     // request animations with cur state
@@ -134,14 +147,89 @@ class Joystick {
 export class State {
   public state: StateObject;
   public joystick: Joystick;
+  private _angle?: number;
+  private _cos?: number;
+  private _sin?: number;
+  private _direction?: CongruentDirection;
+  private _coords?: CoordsTuple;
+
   constructor(joystick: Joystick) {
     this.joystick = joystick;
     this.state = { isActive: false };
   }
-  update(eventType: TouchEvent["type"], touch: Touch) {
-    let output: StateObject;
-    if (eventType == "touchstart") {
+  /** defines angle data */
+  set angle(angle: number) {
+    this._angle = angle;
+    this._cos = Math.cos(angle);
+    this._sin = Math.sin(angle);
+  }
+  /** defines coords of touch */
+  set coords({ pageX, pageY }: PointPosition | { pageX: number; pageY: number }) {
+    this._coords = this.joystick.renderer.origin.getAbsoluteCoords(pageX, pageY);
+  }
+  /** defines direction within angle */
+  set direction(angle: number | undefined) {
+    // ts type-safe
+    if (angle != undefined) {
+      angle = absoluteAngle(angle);
+      // keeps previous direction if in same range
+      if (this._direction != undefined && isAngleInSlice(angle, this._direction)) return;
+
+      for (
+        let i = 0, direction = this.joystick.directions[i];
+        i < this.joystick.directions.length;
+        i++, direction = this.joystick.directions[i]
+      ) {
+        if (direction == this._direction) continue;
+        if (isAngleInSlice(angle, direction)) {
+          this._direction = direction;
+          break;
+        }
+      }
     }
+  }
+  /**
+   * Set intern values and outputs the new computed state
+   * @param eventType A string of DOM {@link TouchEvent["type"]} property
+   * @param pageX A number of touch X coord
+   * @param pageY A number of touch Y coord
+   * @returns A {@link StateObject}
+   */
+  update(eventType: TouchEvent["type"], pageX: Touch["pageX"], pageY: Touch["pageY"]) {
+    if (eventType == "touchstart" && !this.state.isActive) {
+      this.angle = this.joystick.renderer.origin.getPointAngle({ pageX, pageY });
+      this.direction = this._angle;
+      this.coords = { pageX, pageY };
+
+      this.state = {
+        isActive: true,
+        angle: this._angle,
+        direction: this._direction,
+        cos: this._cos,
+        sin: this._sin,
+        coords: this._coords,
+      };
+    } else if (eventType == "touchmove" && this.state.isActive) {
+      this.angle = this.joystick.renderer.origin.getPointAngle({ pageX, pageY });
+      this.direction = this._angle;
+      this.coords = { pageX, pageY };
+
+      this.state = {
+        isActive: true,
+        angle: this._angle,
+        direction: this._direction,
+        cos: this._cos,
+        sin: this._sin,
+        coords: this._coords,
+      };
+    } else if (eventType == "touchend" && this.state.isActive) {
+      // keeps intern values of last move
+
+      this.state = {
+        isActive: false,
+      };
+    }
+    return this.state;
   }
 }
 
@@ -240,7 +328,7 @@ export class PointPosition {
   }
   public get pageX() {
     // call setter
-    if (typeof this._pageX == "number") this.pageX = this.x;
+    if (typeof this._pageX != "number") this.pageX = this.x;
     // ts type-safe
     return typeof this._pageX == "number" ? this._pageX : NaN;
   }
@@ -274,7 +362,13 @@ export class PointPosition {
     return absoluteAngle(thetaAngle);
   }
   /**
-   * This attempts to maintain the correct {@link PointPosition.parent} coords amid layout shifting
+   * @returns A {@link CoordsTuple} relative to this parent
+   */
+  public getAbsoluteCoords(pageX: number, pageY: number): CoordsTuple {
+    return [pageX - this.pageX, pageY - this.pageY];
+  }
+  /**
+   * This attempts to maintain the correct {@link PointPosition.parent} coords amid layout shifting, updating this coords
    * @param debouncing A number of delay in ms to listen for resizing events
    */
   public watchLayoutShifting(debouncing = 200) {
@@ -283,14 +377,13 @@ export class PointPosition {
       () => {
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
-          // call setters
           this.pageX = this.x;
           this.pageY = this.y;
         }, debouncing);
       },
       resizeTimeout,
     ];
-    
+
     window.addEventListener("resize", this.resizeDbc["0"]);
   }
   /** Removes layout listeners and dettaches them */

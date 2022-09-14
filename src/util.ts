@@ -1,3 +1,10 @@
+export type CoordsTuple = {
+  /** represents X */
+  0: number;
+  /** represents Y */
+  1: number;
+};
+
 export type DebouncingHandlerTuple<Ev = Event> = {
   /** The event handler function */
   0: (event: Ev) => void;
@@ -24,10 +31,10 @@ export function mapCongruentAngles(slices: number | string[] | number[], startAn
   const dirAngles: CongruentDirection[] = [];
   let slicesTotal = Array.isArray(slices) ? slices.length : slices;
   let key: number | string;
-  const congruentSliceAngle = (2 * Math.PI) / slicesTotal;
-  for (let i = 0, curAngle = absoluteAngle(startAngle - congruentSliceAngle / 2), endAngle; i < slicesTotal; i++) {
+  const congruentRadiansSlice = (2 * Math.PI) / slicesTotal;
+  for (let i = 0, curAngle = absoluteAngle(startAngle - congruentRadiansSlice / 2), endAngle; i < slicesTotal; i++) {
     key = Array.isArray(slices) ? slices[i] : i + 1;
-    endAngle = absoluteAngle(curAngle + congruentSliceAngle);
+    endAngle = absoluteAngle(curAngle + congruentRadiansSlice);
     dirAngles[i] = { startAngle: curAngle, endAngle, key };
     curAngle = endAngle;
   }
@@ -46,4 +53,8 @@ export function absoluteAngle(angle: number) {
   }
   // remainder of a whole circle
   return angle % (Math.PI * 2);
+}
+
+export function isAngleInSlice(angle: number, dir: CongruentDirection) {
+  return angle >= dir.startAngle && angle <= dir.endAngle;
 }
