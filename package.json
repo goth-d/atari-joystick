@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "simple joystick for simple direction control on touch screens like as with arrow keys",
   "main": "./dist/index.js",
-  "typings": "./dist/index.d.ts",
+  "typings": "./dist/types.d.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "format": "prettier --write ./src",
